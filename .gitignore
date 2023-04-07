@@ -4,3 +4,4 @@ images_size
 .ipynb_checkpoints
 *.pth
 *.pyc
+*.egg-info
