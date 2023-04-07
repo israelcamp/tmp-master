@@ -1,0 +1,22 @@
+
+[project]
+name = "tmpmaster"
+version = "1.0.0"
+authors = [
+    {name = "Israel Campiotti", email = "israelcampiotti@gmail.com"},
+]
+description = "Master tmp"
+requires-python = ">=3.8"
+classifiers = [
+    "Programming Language :: Python",
+]
+dynamic = ["dependencies"]
+
+
+[tool.setuptools.dynamic]
+dependencies = {file = ["requirements.txt"]}
+
+[tool.setuptools.packages.find]
+include = ["tmpmaster*"]
+exclude = ["data*", "notebooks*"]
+

@@ -1,27 +1,8 @@
 import torch.nn as nn
 
-
-class BidirectionalLSTM(nn.Module):
-    def __init__(self, nIn, nHidden, nOut):
-        super(BidirectionalLSTM, self).__init__()
-
-        self.rnn = nn.LSTM(nIn, nHidden, bidirectional=True)
-        self.embedding = nn.Linear(nHidden * 2, nOut)
-
-    def forward(self, input):
-        recurrent, _ = self.rnn(input)
-        T, b, h = recurrent.size()
-        t_rec = recurrent.view(T * b, h)
-
-        output = self.embedding(t_rec)  # [T * b, nOut]
-        output = output.view(T, b, -1)
-
-        return output
-
-
-class CRNN(nn.Module):
+class ConvOCRMaxPool(nn.Module):
     def __init__(self, imgH=32, nc=3, vocab_size=100, leakyRelu=False):
-        super(CRNN, self).__init__()
+        super(ConvOCRMaxPool, self).__init__()
         assert imgH % 16 == 0, "imgH has to be a multiple of 16"
 
         ks = [3, 3, 3, 3, 3, 3, 2]
