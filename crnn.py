@@ -46,19 +46,38 @@ class CRNN(nn.Module):
             else:
                 cnn.add_module("relu{0}".format(i), nn.ReLU(True))
 
+        """
+            MaxPool Kernel per Height:
+            32: (2,2) -> (2,2) -> (2,1) -> (2,1)
+            64: (4,4) -> (2,2) -> (2,1) -> (2,1)
+            128: (4,4) -> (4,4) -> (2,1) -> (2,1)
+            256: (4,4) -> (4,4) -> (4,2) -> (2,1)
+        """
+        maxpoolargs_per_size = {
+            16: ((2, 2), (2, (2, 1)), (2, 1), (1, 1)),
+            32: ((2, 2), (2, 2), (2, 1), (2, 1)),
+            64: ((4, 4), (2, 2), (2, 1), (2, 1)),
+            128: ((4, 4), (4, 4), (2, 1), (2, 1)),
+            256: ((4, 4), (4, 4), (4, 2), (2, 1)),
+        }
+        args = maxpoolargs_per_size[imgH]
         convRelu(0)
-        cnn.add_module("pooling{0}".format(0), nn.MaxPool2d(2, 2))  # 64x16x64
+        cnn.add_module(
+            "pooling{0}".format(0), nn.MaxPool2d(*args[0])
+        )  # 64x16x64
         convRelu(1)
-        cnn.add_module("pooling{0}".format(1), nn.MaxPool2d(2, 2))  # 128x8x32
+        cnn.add_module(
+            "pooling{0}".format(1), nn.MaxPool2d(*args[1])
+        )  # 128x8x32
         convRelu(2, False)
         convRelu(3)
         cnn.add_module(
-            "pooling{0}".format(2), nn.MaxPool2d((2, 1), (2, 1))
+            "pooling{0}".format(2), nn.MaxPool2d(args[2], args[2])
         )  # , (0, 1)))  # 256x4x16
         convRelu(4, True)
         convRelu(5, True)
         cnn.add_module(
-            "pooling{0}".format(3), nn.MaxPool2d((2, 1), (2, 1))
+            "pooling{0}".format(3), nn.MaxPool2d(args[3], args[3])
         )  # , (0, 1)))  # 512x2x16
         convRelu(6, False)  # 512x1x16
 
@@ -69,6 +88,6 @@ class CRNN(nn.Module):
         # conv features
         conv = self.cnn(input)
         b, c, h, w = conv.size()
-        assert h == 1, "the height of conv must be 1"
+        assert h == 1, f"the height of conv must be 1, shape is {conv.shape}"
         conv = conv.squeeze(2).permute(0, 2, 1)  # [w, b, c]
         return self.lm_head(conv)
