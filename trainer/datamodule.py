@@ -10,28 +10,35 @@ from torch.utils.data import DataLoader
 import torchvision as tv
 import torch
 
-from transformers import T5Tokenizer
-import pytorch_lightning as pl
-
 from dataset import TextRecDataset, TestTextRecDataset
 
 
 class MaxPoolImagePad:
-    def __init__(self):
-        self.pool = torch.nn.MaxPool1d(kernel_size=3, stride=2, padding=1)
+    def __init__(self, pooler="mine"):
+        if pooler == "crnn":
+            self.pool = torch.nn.Sequential(
+                torch.nn.MaxPool1d(kernel_size=2, stride=2, padding=0),
+                torch.nn.MaxPool1d(kernel_size=2, stride=2, padding=0),
+                torch.nn.MaxPool1d(kernel_size=2, stride=1, padding=0),
+            )
+        else:
+            self.pool = torch.nn.Sequential(
+                torch.nn.MaxPool1d(kernel_size=3, stride=2, padding=1),
+                torch.nn.MaxPool1d(kernel_size=3, stride=2, padding=1),
+            )
 
     def __call__(self, x):
-        return self.pool(self.pool(x))
+        return self.pool(x)
 
 
 # DataModule
 
 
 @dataclass
-class SROIETask2DataModule(pl.LightningDataModule):
+class SROIETask2DataModule:
     root_dir: str = field(metadata="Dir of images")
     label_file: str = field(metadata="JSON file of labels")
-    tokenizer: Any = field(metadata=".model file")
+    tokenizer: Any = field(metadata="tokenizer")
     height: int = field(default=32, metadata="Height of images")
     train_bs: int = field(default=16, metadata="Training batch size")
     valid_bs: int = field(default=16, metadata="Eval batch size")
@@ -44,7 +51,6 @@ class SROIETask2DataModule(pl.LightningDataModule):
     def __post_init__(
         self,
     ):
-        super().__init__()
         self.img2label = srsly.read_json(self.label_file)
         self.pooler = MaxPoolImagePad()
 

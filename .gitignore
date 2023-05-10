@@ -5,3 +5,13 @@ images_size
 *.pth
 *.pyc
 *.egg-info
+SROIE*/
+plenv
+.neptune
+models
+*.ttf
+vocab.json
+vocab.txt
+tokenizer
+tokenizer.json
+.DS_STORE

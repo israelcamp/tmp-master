@@ -1,5 +1,6 @@
 import torch.nn as nn
 
+
 class ConvOCRMaxPool(nn.Module):
     def __init__(self, imgH=32, nc=3, vocab_size=100, leakyRelu=False):
         super(ConvOCRMaxPool, self).__init__()
@@ -21,9 +22,7 @@ class ConvOCRMaxPool(nn.Module):
             if batchNormalization:
                 cnn.add_module("batchnorm{0}".format(i), nn.BatchNorm2d(nOut))
             if leakyRelu:
-                cnn.add_module(
-                    "relu{0}".format(i), nn.LeakyReLU(0.2, inplace=True)
-                )
+                cnn.add_module("relu{0}".format(i), nn.LeakyReLU(0.2, inplace=True))
             else:
                 cnn.add_module("relu{0}".format(i), nn.ReLU(True))
 
@@ -43,13 +42,9 @@ class ConvOCRMaxPool(nn.Module):
         }
         args = maxpoolargs_per_size[imgH]
         convRelu(0)
-        cnn.add_module(
-            "pooling{0}".format(0), nn.MaxPool2d(*args[0])
-        )  # 64x16x64
+        cnn.add_module("pooling{0}".format(0), nn.MaxPool2d(*args[0]))  # 64x16x64
         convRelu(1)
-        cnn.add_module(
-            "pooling{0}".format(1), nn.MaxPool2d(*args[1])
-        )  # 128x8x32
+        cnn.add_module("pooling{0}".format(1), nn.MaxPool2d(*args[1]))  # 128x8x32
         convRelu(2, False)
         convRelu(3)
         cnn.add_module(
@@ -67,8 +62,12 @@ class ConvOCRMaxPool(nn.Module):
 
     def forward(self, input, *args, **kwargs):
         # conv features
+        image_features = self.image_features(input)
+        return self.lm_head(image_features)
+
+    def image_features(self, input, *args, **kwargs):
         conv = self.cnn(input)
         b, c, h, w = conv.size()
         assert h == 1, f"the height of conv must be 1, shape is {conv.shape}"
-        conv = conv.squeeze(2).permute(0, 2, 1)  # [w, b, c]
-        return self.lm_head(conv)
+        conv = conv.squeeze(2).permute(0, 2, 1)
+        return conv

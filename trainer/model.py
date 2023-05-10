@@ -97,15 +97,15 @@ class TransformersEncoder(torch.nn.Module):
             "architectures": ["DebertaV2ForTokenClassification"],
             "num_labels": vocab_size,
             "model_type": "deberta-v2",
-            "attention_probs_dropout_prob": 0.1,
+            "attention_probs_dropout_prob": 0.25,
             "hidden_act": "gelu",
-            "hidden_dropout_prob": 0.1,
-            "hidden_size": 768,
+            "hidden_dropout_prob": 0.25,
+            "hidden_size": 512,
             "initializer_range": 0.02,
             "intermediate_size": 768,  # 3072,
             "max_position_embeddings": 512,
             "relative_attention": True,
-            "position_buckets": 256,
+            "position_buckets": 256,  # TODO: Maybe less?
             "norm_rel_ebd": "layer_norm",
             "share_att_key": True,
             "pos_att_type": "p2c|c2p",
@@ -115,6 +115,7 @@ class TransformersEncoder(torch.nn.Module):
             "num_attention_heads": 8,
             "num_hidden_layers": 3,
             "type_vocab_size": 0,
+            "pad_token_id": 1,
             "vocab_size": vocab_size,
         }
         config = DebertaV2Config(**config_dict)
@@ -127,30 +128,13 @@ class TransformersEncoder(torch.nn.Module):
         return outputs.logits
 
 
-from cnn import CNN
+class OCRModel(torch.nn.Module):
+    def __init__(self, visual_model, rec_model):
+        super().__init__()
+        self.visual_model = visual_model
+        self.rec_model = rec_model
 
-
-class TextRecognitionModel(nn.Module):
-    def __init__(self, vocab_size=100, imgH=32, nc=3):
-        super(TextRecognitionModel, self).__init__()
-        self.image_feature_extractor = CNN()
-        self.transformers_encoder = TransformersEncoder(vocab_size=vocab_size)
-
-    def forward(self, input, attention_image, *args, **kwargs):
-        # conv features
-        image_features = self.image_feature_extractor(input)
-        # transformer features
-        transformer_features = self.transformers_encoder(
-            image_features, attention_image
-        )
-        return transformer_features
-
-    def get_image_features(self, input, *args, **kwargs):
-        # conv features
-        image_features = self.image_feature_extractor.image_features(input)
-        return image_features
-
-    def get_transformer_features(self, image_features, *args, **kwargs):
-        # transformer features
-        transformer_features = self.transformers_encoder(image_features)
-        return transformer_features
+    def forward(self, images, attention_mask=None):
+        features = self.visual_model(images)
+        logits = self.rec_model(features, attention_mask=attention_mask)
+        return logits
