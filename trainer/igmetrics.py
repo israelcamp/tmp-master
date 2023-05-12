@@ -28,7 +28,7 @@ def get_tokens(s):
 
 
 def compute_exact(a_pred, a_gold):
-    return int(normalize_answer(a_gold) == normalize_answer(a_pred))
+    return float(normalize_answer(a_gold) == normalize_answer(a_pred))
 
 
 def compute_f1(a_pred, a_gold):
@@ -55,7 +55,7 @@ class StringMetricBase(Metric):
 
     @reinit__is_reduced
     def reset(self):
-        self._num_correct = torch.tensor(0, device=self._device)
+        self._num_correct = torch.tensor(0.0, device=self._device)
         self._num_examples = 0
         super().reset()
 

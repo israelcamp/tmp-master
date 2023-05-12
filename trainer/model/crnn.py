@@ -1,22 +1,6 @@
-import torch
 from torch import nn
-from transformers import DebertaV2ForTokenClassification, DebertaV2Config
 
-
-class Swish(nn.Module):
-    def forward(self, x):
-        return x * torch.sigmoid(x)
-
-
-class Feature2Embedding(nn.Module):
-    """
-    Convert [B, C, H, W] image feature tensor to [B, seq_len, D] (B, 512, 512)
-    (B, C, H, W) -> (B, W, H, C)
-    """
-
-    def forward(self, x):
-        n, c, h, w = x.shape
-        return x.permute(0, 3, 2, 1).reshape(n, -1, c)
+from .utils import Swish
 
 
 class ImageFeatureExtractor(nn.Module):
@@ -78,6 +62,9 @@ class ImageFeatureExtractor(nn.Module):
     def forward(self, input, *args, **kwargs):
         # conv features
         image_features = self.image_features(input)
+        return image_features
+
+    def lm(self, image_features):
         return self.lm_head(image_features)
 
     def image_features(self, input, *args, **kwargs):
@@ -86,55 +73,3 @@ class ImageFeatureExtractor(nn.Module):
         assert h == 1, f"the height of conv must be 1, shape is {conv.shape}"
         conv = conv.squeeze(2).permute(0, 2, 1)
         return conv
-
-
-class TransformersEncoder(torch.nn.Module):
-    def __init__(self, vocab_size: int = 100):
-        super().__init__()
-
-        config_dict = {
-            "model_type": "deberta-v2",
-            "architectures": ["DebertaV2ForTokenClassification"],
-            "num_labels": vocab_size,
-            "model_type": "deberta-v2",
-            "attention_probs_dropout_prob": 0.25,
-            "hidden_act": "gelu",
-            "hidden_dropout_prob": 0.25,
-            "hidden_size": 512,
-            "initializer_range": 0.02,
-            "intermediate_size": 768,  # 3072,
-            "max_position_embeddings": 512,
-            "relative_attention": True,
-            "position_buckets": 256,  # TODO: Maybe less?
-            "norm_rel_ebd": "layer_norm",
-            "share_att_key": True,
-            "pos_att_type": "p2c|c2p",
-            "layer_norm_eps": 1e-7,
-            "max_relative_positions": -1,
-            "position_biased_input": False,
-            "num_attention_heads": 8,
-            "num_hidden_layers": 3,
-            "type_vocab_size": 0,
-            "pad_token_id": 1,
-            "vocab_size": vocab_size,
-        }
-        config = DebertaV2Config(**config_dict)
-        self.encoder = DebertaV2ForTokenClassification(config)
-
-    def forward(self, image_embeddings, attention_mask=None):
-        outputs = self.encoder(
-            inputs_embeds=image_embeddings, attention_mask=attention_mask
-        )
-        return outputs.logits
-
-
-class OCRModel(torch.nn.Module):
-    def __init__(self, visual_model, rec_model):
-        super().__init__()
-        self.visual_model = visual_model
-        self.rec_model = rec_model
-
-    def forward(self, images, attention_mask=None):
-        features = self.visual_model(images)
-        logits = self.rec_model(features, attention_mask=attention_mask)
-        return logits

@@ -44,6 +44,7 @@ class SROIETask2DataModule:
     valid_bs: int = field(default=16, metadata="Eval batch size")
     num_workers: int = field(default=2)
     val_pct: float = field(default=0.1, metadata="Percentage of images to validation")
+    pooler_mode: str = field(default="mine", metadata="Pooling method")
 
     max_width: int = field(default=None)
     do_pool: bool = field(default=True)
@@ -52,7 +53,7 @@ class SROIETask2DataModule:
         self,
     ):
         self.img2label = srsly.read_json(self.label_file)
-        self.pooler = MaxPoolImagePad()
+        self.pooler = MaxPoolImagePad(pooler=self.pooler_mode)
 
     def train_augs(
         self,
