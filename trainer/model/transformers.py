@@ -30,7 +30,7 @@ class AbstractTransformersEncoder(torch.nn.Module):
             "pos_att_type": "p2c|c2p",
             "layer_norm_eps": 1e-7,
             "max_relative_positions": -1,
-            "position_biased_input": False,
+            "position_biased_input": True,
             "num_attention_heads": 8,
             "num_hidden_layers": 3,
             "type_vocab_size": 0,
