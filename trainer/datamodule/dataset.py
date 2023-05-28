@@ -61,9 +61,7 @@ class TextRecDataset(Dataset):
             image = self.expand_image(image, self.height, 40)
 
         if self.tfms is not None:
-            image = np.array(image)
-            image = self.tfms(image=image)
-            image = Image.fromarray(image)
+            image = self.tfms(image)
         return image
 
     def __getitem__(self, idx):

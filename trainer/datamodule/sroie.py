@@ -10,7 +10,8 @@ from torch.utils.data import DataLoader
 import torchvision as tv
 import torch
 
-from dataset import TextRecDataset, TestTextRecDataset
+from .dataset import TextRecDataset, TestTextRecDataset
+from .augs import ImgaugBackend
 
 
 class MaxPoolImagePad:
@@ -43,7 +44,9 @@ class SROIETask2DataModule:
     train_bs: int = field(default=16, metadata="Training batch size")
     valid_bs: int = field(default=16, metadata="Eval batch size")
     num_workers: int = field(default=2)
-    val_pct: float = field(default=0.1, metadata="Percentage of images to validation")
+    val_pct: float = field(
+        default=0.1, metadata="Percentage of images to validation"
+    )
     pooler_mode: str = field(default="mine", metadata="Pooling method")
 
     max_width: int = field(default=None)
@@ -75,8 +78,16 @@ class SROIETask2DataModule:
         jpeg = iaa.imgcorruptlike.JpegCompression(severity=(1, 5))
         pixelate = iaa.imgcorruptlike.Pixelate(severity=(1, 4))
         dropout = iaa.Dropout(p=(0, 0.05))
-        tfms = [rotate, affine, pad, elastic, gaussian, jpeg, pixelate, dropout]
-        # augment = iaa.SomeOf(2, tfms)
+        tfms = [
+            rotate,
+            affine,
+            pad,
+            elastic,
+            gaussian,
+            jpeg,
+            pixelate,
+            dropout,
+        ]
         augment = iaa.OneOf(
             [
                 iaa.OneOf(tfms),
@@ -87,7 +98,8 @@ class SROIETask2DataModule:
                 iaa.Sequential(tfms),
             ]
         )
-        return iaa.OneOf([augment, augment, augment, iaa.Noop()])
+        tfms = iaa.OneOf([augment, augment, augment, iaa.Noop()])
+        return ImgaugBackend(tfms=tfms)
 
     @property
     def dataset_class(
@@ -98,7 +110,9 @@ class SROIETask2DataModule:
     def setup(self, stage):
         if stage == "fit":
             # separate names
-            image_names = sorted(list(set([k.split("__")[0] for k in self.img2label])))
+            image_names = sorted(
+                list(set([k.split("__")[0] for k in self.img2label]))
+            )
             train_size = round(len(image_names) * (1.0 - self.val_pct))
             train_image_names = image_names[:train_size]
             valid_image_names = image_names[train_size:]
@@ -122,7 +136,9 @@ class SROIETask2DataModule:
                 tfms=self.train_augs(),
             )
             self.val_dataset = self.dataset_class(
-                images_dir=self.root_dir, img2label=valid_img2label, height=self.height
+                images_dir=self.root_dir,
+                img2label=valid_img2label,
+                height=self.height,
             )
 
         if stage == "test":
@@ -139,7 +155,9 @@ class SROIETask2DataModule:
         labels = [s[1] for s in samples]
 
         image_widths = [im.width for im in images]
-        max_width = self.max_width if self.max_width is not None else max(image_widths)
+        max_width = (
+            self.max_width if self.max_width is not None else max(image_widths)
+        )
 
         attention_images = []
         for w in image_widths:
@@ -152,7 +170,9 @@ class SROIETask2DataModule:
 
         h = images[0].size[1]
         to_tensor = tv.transforms.ToTensor()
-        images = [to_tensor(self.expand_image(im, h=h, w=max_width)) for im in images]
+        images = [
+            to_tensor(self.expand_image(im, h=h, w=max_width)) for im in images
+        ]
 
         tokens = self.tokenizer.batch_encode_plus(
             labels, padding="longest", return_tensors="pt"

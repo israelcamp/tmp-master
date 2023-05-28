@@ -15,3 +15,9 @@ vocab.txt
 tokenizer
 tokenizer.json
 .DS_STORE
+IAM/
+SVT
+FocusedSceneText/
+script_ch*
+subs/
+*.pt

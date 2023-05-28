@@ -2,11 +2,16 @@ import collections
 
 import torch
 
+from evaluate import load
+
 from ignite.metrics import Metric
 from ignite.exceptions import NotComputableError
 
 # These decorators helps with distributed settings
 from ignite.metrics.metric import sync_all_reduce, reinit__is_reduced
+
+
+cer_score = load("cer")
 
 
 def normalize_answer(s):
@@ -45,6 +50,10 @@ def compute_f1(a_pred, a_gold):
     recall = 1.0 * num_same / len(gold_toks)
     f1 = (2 * precision * recall) / (precision + recall)
     return f1
+
+
+def compute_cer(a_pred, a_gold):
+    return cer_score.compute(references=[a_gold], predictions=[a_pred])
 
 
 class StringMetricBase(Metric):
@@ -91,3 +100,8 @@ class ExactMatch(StringMetricBase):
 class WordF1(StringMetricBase):
     def _metric(self, y_pred, y):
         return compute_f1(y_pred, y)
+
+
+class CER(StringMetricBase):
+    def _metric(self, y_pred, y):
+        return compute_cer(y_pred, y)
