@@ -12,8 +12,6 @@ models
 *.ttf
 vocab.json
 vocab.txt
-tokenizer
-tokenizer.json
 .DS_STORE
 IAM/
 SVT

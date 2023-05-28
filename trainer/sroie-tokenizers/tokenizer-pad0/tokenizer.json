@@ -1,0 +1,171 @@
+{
+  "version": "1.0",
+  "truncation": null,
+  "padding": {
+    "strategy": "BatchLongest",
+    "direction": "Right",
+    "pad_to_multiple_of": null,
+    "pad_id": 0,
+    "pad_type_id": 0,
+    "pad_token": "<pad>"
+  },
+  "added_tokens": [
+    {
+      "id": 0,
+      "content": "<pad>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 1,
+      "content": "</s>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    }
+  ],
+  "normalizer": null,
+  "pre_tokenizer": null,
+  "post_processor": {
+    "type": "TemplateProcessing",
+    "single": [
+      {
+        "Sequence": {
+          "id": "A",
+          "type_id": 0
+        }
+      },
+      {
+        "SpecialToken": {
+          "id": "</s>",
+          "type_id": 0
+        }
+      }
+    ],
+    "pair": [
+      {
+        "Sequence": {
+          "id": "A",
+          "type_id": 0
+        }
+      },
+      {
+        "Sequence": {
+          "id": "B",
+          "type_id": 1
+        }
+      }
+    ],
+    "special_tokens": {
+      "</s>": {
+        "id": "</s>",
+        "ids": [
+          1
+        ],
+        "tokens": [
+          "</s>"
+        ]
+      }
+    }
+  },
+  "decoder": {
+    "type": "ByteLevel",
+    "add_prefix_space": true,
+    "trim_offsets": true,
+    "use_regex": true
+  },
+  "model": {
+    "type": "BPE",
+    "dropout": null,
+    "unk_token": "<unk>",
+    "continuing_subword_prefix": null,
+    "end_of_word_suffix": null,
+    "fuse_unk": false,
+    "byte_fallback": false,
+    "vocab": {
+      "<pad>": 0,
+      "</s>": 1,
+      "<s>": 2,
+      "<unk>": 3,
+      "<mask>": 4,
+      "=": 6,
+      "7": 7,
+      "8": 8,
+      "}": 9,
+      "K": 10,
+      "9": 11,
+      "G": 12,
+      "Y": 13,
+      "_": 14,
+      "#": 15,
+      "L": 16,
+      "]": 17,
+      "A": 18,
+      "·": 19,
+      "0": 20,
+      "O": 21,
+      "?": 22,
+      "P": 23,
+      ")": 24,
+      "6": 25,
+      "@": 26,
+      "W": 27,
+      "l": 28,
+      ",": 29,
+      "'": 30,
+      "\\": 31,
+      " ": 32,
+      "4": 33,
+      "D": 34,
+      "J": 35,
+      "\"": 36,
+      "~": 37,
+      "^": 38,
+      "V": 39,
+      "C": 40,
+      "Q": 41,
+      "/": 42,
+      "-": 43,
+      "S": 44,
+      "`": 45,
+      "B": 46,
+      "3": 47,
+      "$": 48,
+      ">": 49,
+      "M": 50,
+      "&": 51,
+      "(": 52,
+      "T": 53,
+      "I": 54,
+      "2": 55,
+      "F": 56,
+      ";": 57,
+      "[": 58,
+      ".": 59,
+      ":": 60,
+      "!": 61,
+      "<": 62,
+      "5": 63,
+      "{": 64,
+      "U": 65,
+      "R": 66,
+      "+": 67,
+      "H": 68,
+      "|": 69,
+      "N": 70,
+      "*": 71,
+      "Z": 72,
+      "X": 73,
+      "E": 74,
+      "1": 75,
+      "r": 76,
+      "%": 77
+    },
+    "merges": []
+  }
+}
