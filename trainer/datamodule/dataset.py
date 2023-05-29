@@ -27,6 +27,7 @@ class TextRecDataset(Dataset):
     img2label: dict = field(metadata="Dict mapping images to labels")
     height: PositiveInt = field(default=32, metadata="Height of images")
     tfms: Any = field(default=None, metadata="Image augmentations")
+    min_width: PositiveInt = field(default=40, metadata="Min width of images")
 
     def __post_init__(
         self,
@@ -51,17 +52,18 @@ class TextRecDataset(Dataset):
         image_path = os.path.join(self.images_dir, f"{image_name}.png")
         image = Image.open(image_path).convert("RGB")
 
+        if self.tfms is not None:
+            image = self.tfms(image)
+
         w, h = image.size
         ratio = self.height / h  # how the height will change
         nw = round(w * ratio)
 
         image = image.resize((nw, self.height))
 
-        if nw < 40:
-            image = self.expand_image(image, self.height, 40)
+        if nw < self.min_width:
+            image = self.expand_image(image, self.height, self.min_width)
 
-        if self.tfms is not None:
-            image = self.tfms(image)
         return image
 
     def __getitem__(self, idx):
