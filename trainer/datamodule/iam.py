@@ -35,11 +35,11 @@ class IAMDataModule(SROIETask2DataModule):
         return {k: v["text"] for k, v in lst_data.items()}
 
     def setup(self, stage=None):
+        image_dir = os.path.join(self.root_dir, "lines")
         if stage == "fit":
             train_img2label = self.get_name2label("tr")
             valid_img2label = self.get_name2label("va")
 
-            image_dir = os.path.join(self.root_dir, "lines")
             self.train_dataset = self.dataset_class(
                 images_dir=image_dir,
                 img2label=train_img2label,
