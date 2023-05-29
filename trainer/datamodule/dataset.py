@@ -52,6 +52,9 @@ class TextRecDataset(Dataset):
         image_path = os.path.join(self.images_dir, f"{image_name}.png")
         image = Image.open(image_path).convert("RGB")
 
+        if self.tfms is not None:
+            image = self.tfms(image)
+
         w, h = image.size
         ratio = self.height / h  # how the height will change
         nw = round(w * ratio)
@@ -60,9 +63,6 @@ class TextRecDataset(Dataset):
 
         if nw < self.min_width:
             image = self.expand_image(image, self.height, self.min_width)
-
-        if self.tfms is not None:
-            image = self.tfms(image)
 
         return image
 
