@@ -53,4 +53,9 @@ class IAMDataModule(SROIETask2DataModule):
             )
 
         if stage == "test":
-            self.test_dataset = self.val_dataset
+            test_img2label = self.get_name2label("te")
+            self.test_dataset = self.dataset_class(
+                images_dir=image_dir,
+                img2label=test_img2label,
+                height=self.height,
+            )
