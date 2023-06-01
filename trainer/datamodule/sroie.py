@@ -22,6 +22,12 @@ class MaxPoolImagePad:
                 torch.nn.MaxPool1d(kernel_size=2, stride=2, padding=0),
                 torch.nn.MaxPool1d(kernel_size=2, stride=1, padding=0),
             )
+        if pooler == "iam":
+            self.pool = torch.nn.Sequential(
+                torch.nn.MaxPool1d(kernel_size=3, stride=2, padding=1),
+                torch.nn.MaxPool1d(kernel_size=3, stride=2, padding=1),
+                torch.nn.MaxPool1d(kernel_size=3, stride=2, padding=1),
+            )
         else:
             self.pool = torch.nn.Sequential(
                 torch.nn.MaxPool1d(kernel_size=3, stride=2, padding=1),
