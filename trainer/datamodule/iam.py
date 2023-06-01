@@ -22,7 +22,7 @@ class IAMDataModule(SROIETask2DataModule):
         )
         pad = iaa.Pad(
             percent=((0, 0.01), (0, 0.1), (0, 0.01), (0, 0.1)),
-            keep_size=False,
+            keep_size=True,
             pad_cval=255,
         )
         elastic = iaa.ElasticTransformation(alpha=(0.0, 10.0), sigma=2.0)
