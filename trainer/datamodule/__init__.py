@@ -4,6 +4,7 @@ from .sroie import (
     TestSROIETask2DataModule,
 )
 from .iam import IAMDataModule
+from .svt import SVTDataModule
 from .dataset import TextRecDataset, TestTextRecDataset
 
 
@@ -14,4 +15,5 @@ __all__ = [
     "IAMDataModule",
     "TextRecDataset",
     "TestTextRecDataset",
+    "SVTDataModule",
 ]
