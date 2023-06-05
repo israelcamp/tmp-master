@@ -50,7 +50,7 @@ class SVTDataModule(SROIETask2DataModule):
             images_dir=images_dir,
             img2label=train_img2label,
             height=self.height,
-            # tfms=self.train_augs(),
+            tfms=self.train_augs(),
         )
         self.val_dataset = self.dataset_class(
             images_dir=images_dir,
