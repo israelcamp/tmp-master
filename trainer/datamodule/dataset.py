@@ -1,6 +1,7 @@
 import os
 from dataclasses import field, dataclass
 from typing import Any
+import math
 
 from PIL import Image
 import numpy as np
@@ -19,8 +20,6 @@ def get_image(image_path):
 
 
 # Dataset
-
-
 @dataclass
 class TextRecDataset(Dataset):
     images_dir: DirectoryPath = field(metadata="Dir of images")
@@ -48,15 +47,20 @@ class TextRecDataset(Dataset):
         expanded.paste(img)
         return expanded
 
+    @staticmethod
+    def open_image(image_path):
+        image = Image.open(image_path).convert("RGB")
+        return image
+
     def get_image(self, image_name: str):
         image_path = os.path.join(self.images_dir, f"{image_name}.png")
-        image = Image.open(image_path).convert("RGB")
+        image = self.open_image(image_path)
 
         w, h = image.size
-        ratio = self.height / h  # how the height will change
-        nw = round(w * ratio)
+        ratio = w / float(h)
+        nw = math.ceil(self.height * ratio)
 
-        image = image.resize((nw, self.height))
+        image = image.resize((nw, self.height), Image.BICUBIC)
 
         if nw < self.min_width:
             image = self.expand_image(image, self.height, self.min_width)
@@ -71,6 +75,20 @@ class TextRecDataset(Dataset):
         image = self.get_image(image_name)
         outputs = (image, label)
         return outputs
+
+
+@dataclass
+class GrayScaleTextRecDataset(TextRecDataset):
+    @staticmethod
+    def open_image(image_path):
+        image = Image.open(image_path).convert("L")
+        return image
+
+    @staticmethod
+    def expand_image(img, h, w):
+        expanded = Image.new("L", (w, h), color=255)  # white
+        expanded.paste(img)
+        return expanded
 
 
 @dataclass

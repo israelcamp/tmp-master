@@ -6,6 +6,7 @@ import imgaug.augmenters as iaa
 
 from .sroie import SROIETask2DataModule
 from .augs import ImgaugBackend
+from .dataset import GrayScaleTextRecDataset
 
 
 @dataclass
@@ -34,6 +35,12 @@ class IIIT5KDataModule(SROIETask2DataModule):
             ]
         )
         return ImgaugBackend(tfms=augment)
+
+    @property
+    def dataset_class(
+        self,
+    ):
+        return GrayScaleTextRecDataset
 
     def setup(self, stage):
         train_images_dir = os.path.join(self.root_dir, "train")
