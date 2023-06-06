@@ -25,12 +25,14 @@ class IIIT5KDataModule(SROIETask2DataModule):
             keep_size=False,
             pad_cval=255,
         )
-        tfms = [
-            rotate,
-            affine,
-            pad,
-        ]
-        augment = iaa.OneOf(tfms)
+        elastic = iaa.ElasticTransformation(alpha=(0.0, 10.0), sigma=2.0)
+        tfms = [rotate, affine, pad, iaa.Noop(), elastic]
+        augment = iaa.OneOf(
+            [
+                iaa.OneOf(tfms),
+                iaa.SomeOf(2, tfms),
+            ]
+        )
         return ImgaugBackend(tfms=augment)
 
     def setup(self, stage):
