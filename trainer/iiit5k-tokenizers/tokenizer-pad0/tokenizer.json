@@ -1,0 +1,136 @@
+{
+  "version": "1.0",
+  "truncation": null,
+  "padding": {
+    "strategy": "BatchLongest",
+    "direction": "Right",
+    "pad_to_multiple_of": null,
+    "pad_id": 0,
+    "pad_type_id": 0,
+    "pad_token": "<pad>"
+  },
+  "added_tokens": [
+    {
+      "id": 0,
+      "content": "<pad>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 1,
+      "content": "</s>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    }
+  ],
+  "normalizer": null,
+  "pre_tokenizer": null,
+  "post_processor": {
+    "type": "TemplateProcessing",
+    "single": [
+      {
+        "Sequence": {
+          "id": "A",
+          "type_id": 0
+        }
+      },
+      {
+        "SpecialToken": {
+          "id": "</s>",
+          "type_id": 0
+        }
+      }
+    ],
+    "pair": [
+      {
+        "Sequence": {
+          "id": "A",
+          "type_id": 0
+        }
+      },
+      {
+        "Sequence": {
+          "id": "B",
+          "type_id": 1
+        }
+      }
+    ],
+    "special_tokens": {
+      "</s>": {
+        "id": "</s>",
+        "ids": [
+          1
+        ],
+        "tokens": [
+          "</s>"
+        ]
+      }
+    }
+  },
+  "decoder": {
+    "type": "ByteLevel",
+    "add_prefix_space": true,
+    "trim_offsets": true,
+    "use_regex": true
+  },
+  "model": {
+    "type": "BPE",
+    "dropout": null,
+    "unk_token": "<unk>",
+    "continuing_subword_prefix": null,
+    "end_of_word_suffix": null,
+    "fuse_unk": false,
+    "byte_fallback": false,
+    "vocab": {
+      "<pad>": 0,
+      "</s>": 1,
+      "<s>": 2,
+      "<unk>": 3,
+      "<mask>": 4,
+      "F": 6,
+      "A": 7,
+      "J": 8,
+      "Y": 9,
+      "O": 10,
+      "0": 11,
+      "6": 12,
+      "S": 13,
+      "5": 14,
+      "4": 15,
+      "W": 16,
+      "1": 17,
+      "T": 18,
+      "2": 19,
+      "D": 20,
+      "B": 21,
+      "U": 22,
+      "K": 23,
+      "Q": 24,
+      "C": 25,
+      "9": 26,
+      "M": 27,
+      "H": 28,
+      "E": 29,
+      "I": 30,
+      "L": 31,
+      "V": 32,
+      "P": 33,
+      "R": 34,
+      "X": 35,
+      "G": 36,
+      " ": 37,
+      "7": 38,
+      "8": 39,
+      "N": 40,
+      "3": 41,
+      "Z": 42
+    },
+    "merges": []
+  }
+}
