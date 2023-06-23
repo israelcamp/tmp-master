@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 import os
+from PIL import Image
 
 import srsly
 import imgaug.augmenters as iaa
@@ -41,6 +42,12 @@ class IIIT5KDataModule(SROIETask2DataModule):
         self,
     ):
         return GrayScaleTextRecDataset
+
+    @staticmethod
+    def expand_image(img, h, w):
+        expanded = Image.new("L", (w, h), color=(0,))  # black
+        expanded.paste(img)
+        return expanded
 
     def setup(self, stage):
         train_images_dir = os.path.join(self.root_dir, "train")
