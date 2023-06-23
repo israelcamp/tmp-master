@@ -12,31 +12,6 @@ from .dataset import GrayScaleTextRecDataset
 
 @dataclass
 class IIIT5KDataModule(SROIETask2DataModule):
-    def train_augs(
-        self,
-    ):
-        rotate = iaa.KeepSizeByResize(
-            iaa.Affine(rotate=(-5, 5), cval=255, fit_output=True)
-        )
-        affine = iaa.Affine(
-            scale=(0.98, 1.02),
-            cval=255,
-        )
-        pad = iaa.Pad(
-            percent=((0, 0.01), (0, 0.1), (0, 0.01), (0, 0.1)),
-            keep_size=False,
-            pad_cval=255,
-        )
-        elastic = iaa.ElasticTransformation(alpha=(0.0, 10.0), sigma=2.0)
-        tfms = [rotate, affine, pad, iaa.Noop(), elastic]
-        augment = iaa.OneOf(
-            [
-                iaa.OneOf(tfms),
-                iaa.SomeOf(2, tfms),
-            ]
-        )
-        return ImgaugBackend(tfms=augment)
-
     @property
     def dataset_class(
         self,
@@ -66,8 +41,8 @@ class IIIT5KDataModule(SROIETask2DataModule):
             images_dir=train_images_dir,
             img2label=train_img2label,
             height=self.height,
-            tfms=self.train_augs(),
         )
+
         self.val_dataset = self.dataset_class(
             images_dir=train_images_dir,
             img2label=valid_img2label,
