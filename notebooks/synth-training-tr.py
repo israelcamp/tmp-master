@@ -77,7 +77,9 @@ class SynthDataset(torch.utils.data.Dataset):
             image, label = self.read_image_file_and_label(image_file)
         except:
             print(f"Error reading image {image_file} idx {idx}")
-            return self.__getitem__(random.randint(0, len(self.image_files) - 1))
+            return self.__getitem__(
+                random.randint(0, len(self.image_files) - 1)
+            )
 
         return image, label
 
@@ -139,16 +141,22 @@ class SynthDataModule:
         labels = [s[1] for s in samples]
 
         image_widths = [im.width for im in images]
-        max_width = self.max_width if self.max_width is not None else max(image_widths)
+        max_width = (
+            self.max_width if self.max_width is not None else max(image_widths)
+        )
 
         attention_images = []
         for w in image_widths:
             attention_images.append([1] * w + [0] * (max_width - w))
-        attention_images = POOLER(torch.tensor(attention_images).float()).long()
+        attention_images = POOLER(
+            torch.tensor(attention_images).float()
+        ).long()
 
         h = images[0].size[1]
         to_tensor = tv.transforms.ToTensor()
-        images = [to_tensor(self.expand_image(im, h=h, w=max_width)) for im in images]
+        images = [
+            to_tensor(self.expand_image(im, h=h, w=max_width)) for im in images
+        ]
 
         tokens = self.tokenizer.batch_encode_plus(
             labels, padding="longest", return_tensors="pt"
@@ -181,7 +189,7 @@ datamodule = SynthDataModule(
     train_dataset=train_dataset,
     val_dataset=val_dataset,
     tokenizer=tokenizer,
-    train_bs=8,
+    train_bs=4,
     valid_bs=16,
     num_workers=4,
 )
@@ -211,16 +219,22 @@ class ResidualBlock(nn.Module):
     def __init__(self, in_channels, out_channels, st=(2, 1)):
         super().__init__()
         self.conv1 = nn.Sequential(
-            nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=1, padding=1),
+            nn.Conv2d(
+                in_channels, out_channels, kernel_size=3, stride=1, padding=1
+            ),
             nn.BatchNorm2d(out_channels, momentum=0.01, eps=1e-3),
             Swish(),
         )
         self.conv2 = nn.Sequential(
-            nn.Conv2d(out_channels, out_channels, kernel_size=3, stride=st, padding=1),
+            nn.Conv2d(
+                out_channels, out_channels, kernel_size=3, stride=st, padding=1
+            ),
             nn.BatchNorm2d(out_channels, momentum=0.01, eps=1e-3),
         )
         self.downsample = nn.Sequential(
-            nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=st, padding=0),
+            nn.Conv2d(
+                in_channels, out_channels, kernel_size=1, stride=st, padding=0
+            ),
             nn.BatchNorm2d(out_channels, momentum=0.01, eps=1e-3),
         )
 
@@ -260,12 +274,13 @@ class ResNetLike(nn.Module):
         self.lm_head = nn.Linear(512, vocab_size)
 
     def block(self, in_channels, out_channels, st=2):
-        return ResidualBlock(in_channels=in_channels, out_channels=out_channels, st=st)
+        return ResidualBlock(
+            in_channels=in_channels, out_channels=out_channels, st=st
+        )
 
     def forward(self, images, *args, **kwargs):
         embedding = self.image_embeddings(images)
-        logits = self.lm_head(embedding)
-        return logits
+        return embedding
 
     def lm(self, embedding):
         return self.lm_head(embedding)
@@ -291,7 +306,7 @@ class AbstractTransformersEncoder(torch.nn.Module):
             "hidden_size": 512,
             "initializer_range": 0.02,
             "intermediate_size": 768,  # 3072,
-            "max_position_embeddings": 512,
+            "max_position_embeddings": 512 + 128,  # had to change from 512
             "relative_attention": True,
             "position_buckets": 64,  # TODO: Maybe less?
             "norm_rel_ebd": "layer_norm",
@@ -318,7 +333,7 @@ class AbstractTransformersEncoder(torch.nn.Module):
 
 
 # %%
-vis_model = ResNetLike(vocab_size=tokenizer.vocab_size, p=0.0)
+vis_model = ResNetLike(vocab_size=tokenizer.vocab_size, p=0.15)
 tr_model = AbstractTransformersEncoder(vocab_size=tokenizer.vocab_size)
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -335,7 +350,15 @@ STEPS
 
 # %%
 optimizer = torch.optim.AdamW(tr_model.parameters(), lr=1e-4, weight_decay=0)
-lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, STEPS, 1e-8)
+vis_optimizer = torch.optim.AdamW(
+    vis_model.parameters(), lr=1e-4, weight_decay=0
+)
+lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+    optimizer, STEPS, 1e-8
+)
+vis_lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+    vis_optimizer, STEPS, 1e-8
+)
 criterion = torch.nn.CTCLoss(blank=tokenizer.pad_token_id, zero_infinity=True)
 
 
@@ -345,7 +368,9 @@ def get_preds_from_logits(logits, attention_image, labels):
     if len(decoded_ids.shape) == 1:
         decoded_ids = decoded_ids.unsqueeze(0)
 
-    decoded = [decoder(dec, att) for dec, att in zip(decoded_ids, attention_image)]
+    decoded = [
+        decoder(dec, att) for dec, att in zip(decoded_ids, attention_image)
+    ]
     y_pred = tokenizer.batch_decode(decoded, skip_special_tokens=True)
     y = tokenizer.batch_decode(labels, skip_special_tokens=True)
     return y_pred, y
@@ -353,18 +378,19 @@ def get_preds_from_logits(logits, attention_image, labels):
 
 # %%
 def train_step(engine, batch):
-    vis_model.eval()
+    vis_model.train()
     tr_model.train()
 
     optimizer.zero_grad()
     tr_model.zero_grad()
+    vis_model.zero_grad()
 
     images, labels, attention_mask, attention_image = [
         x.to(device) if x is not None else x for x in batch
     ]
 
-    with torch.no_grad():
-        image_embeddings = vis_model(images)
+    # with torch.no_grad():
+    image_embeddings = vis_model(images)
     logits = tr_model(image_embeddings, attention_mask=attention_image)
 
     input_length = attention_image.sum(-1)
@@ -388,6 +414,8 @@ def train_step(engine, batch):
 
     optimizer.step()
     lr_scheduler.step()
+    vis_optimizer.step()
+    vis_lr_scheduler.step()
     return loss.item()
 
 
@@ -443,13 +471,20 @@ trainer.add_event_handler(Events.ITERATION_COMPLETED(every=10_000), handler)
 
 # %%
 vis_checkpoint = torch.load(
-    "/home/israel/Mestrado/notebooks/synth-broken-ckpts/checkpoint_1740000.pt"
+    "/home/israel/Mestrado/notebooks/synth-broken-ckpts/best_model_2_accuracy=0.8796.pt"
 )
-print("Loading vis weights", vis_model.load_state_dict(vis_checkpoint["model"]))
+print("Loading vis weights", vis_model.load_state_dict(vis_checkpoint))
+tr_checkpoint = torch.load(
+    "/home/israel/Mestrado/notebooks/synth-broken-tr-ckpts/best_model_1_accuracy=0.9020.pt"
+)
+print("Loading tr weights", tr_model.load_state_dict(tr_checkpoint))
 
 
-tr_checkpoint = torch.load("")  # TODO: correct path
-Checkpoint.load_objects(to_load=to_save, checkpoint=tr_checkpoint)
+# TODO: correct path
+# tr_checkpoint = torch.load(
+#     "/home/israel/Mestrado/notebooks/synth-broken-tr-ckpts/checkpoint_870000.pt"
+# )
+# Checkpoint.load_objects(to_load=to_save, checkpoint=tr_checkpoint)
 
 
 # %%
@@ -465,33 +500,33 @@ handler = Checkpoint(
 validation_evaluator.add_event_handler(Events.COMPLETED, handler)
 
 # %%
-neptune_logger = NeptuneLogger(
-    project="i155825/TRecPretrain",
-    api_token="eyJhcGlfYWRkcmVzcyI6Imh0dHBzOi8vYXBwLm5lcHR1bmUuYWkiLCJhcGlfdXJsIjoiaHR0cHM6Ly9hcHAubmVwdHVuZS5haSIsImFwaV9rZXkiOiJhOGUyY2VlOS1hZTU5LTQ2NGQtYTY5Zi04OGJmZWM2M2NlMDAifQ==",
-)
+# neptune_logger = NeptuneLogger(
+#     project="i155825/TRecPretrain",
+#     api_token="eyJhcGlfYWRkcmVzcyI6Imh0dHBzOi8vYXBwLm5lcHR1bmUuYWkiLCJhcGlfdXJsIjoiaHR0cHM6Ly9hcHAubmVwdHVuZS5haSIsImFwaV9rZXkiOiJhOGUyY2VlOS1hZTU5LTQ2NGQtYTY5Zi04OGJmZWM2M2NlMDAifQ==",
+# )
 
-neptune_logger.attach_output_handler(
-    trainer,
-    event_name=Events.ITERATION_COMPLETED(every=100),
-    tag="training",
-    output_transform=lambda loss: {"loss": loss},
-)
+# neptune_logger.attach_output_handler(
+#     trainer,
+#     event_name=Events.ITERATION_COMPLETED(every=100),
+#     tag="training",
+#     output_transform=lambda loss: {"loss": loss},
+# )
 
-neptune_logger.attach_output_handler(
-    validation_evaluator,
-    event_name=Events.EPOCH_COMPLETED,
-    tag="validation",
-    metric_names=["accuracy"],
-    global_step_transform=global_step_from_engine(trainer),
-)
+# neptune_logger.attach_output_handler(
+#     validation_evaluator,
+#     event_name=Events.EPOCH_COMPLETED,
+#     tag="validation",
+#     metric_names=["accuracy"],
+#     global_step_transform=global_step_from_engine(trainer),
+# )
 
-neptune_logger["code"].upload_files(
-    [
-        f"{CODE_PATH}/*.py",
-        f"{CODE_PATH}/**/*.py",
-        "/Users/israelcampiotti/Documents/msc/tmp-master/notebooks/synth-training-tr.py",  # TODO: fix path
-    ]
-)
+# neptune_logger["code"].upload_files(
+#     [
+#         f"{CODE_PATH}/*.py",
+#         f"{CODE_PATH}/**/*.py",
+#         "/home/israel/Mestrado/notebooks/synth-training-tr.py",
+#     ]
+# )
 
 # %%
 pbar = ProgressBar()
