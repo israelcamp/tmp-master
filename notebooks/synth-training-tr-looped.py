@@ -1,18 +1,19 @@
-# %%
 CODE_PATH = "../trainer"
 
-# %%
 import sys
 
 sys.path.append(CODE_PATH)
 
-# %%
+from dataclasses import dataclass, field
+from typing import Any
 import os
 from PIL import Image
 import random
 
 import torch
+from torch import nn
 import torchvision as tv
+from torch.utils.data import DataLoader
 from transformers import AutoTokenizer
 from transformers import DebertaV2ForTokenClassification, DebertaV2Config
 
@@ -23,23 +24,12 @@ from ignite.engine import (
 from ignite.handlers import Checkpoint
 from ignite.contrib.handlers import global_step_from_engine
 from ignite.contrib.handlers import ProgressBar
-from ignite.contrib.handlers.neptune_logger import NeptuneLogger
 
-# %%
+
 from ctc import GreedyDecoder
 from igmetrics import ExactMatch
 
-# %%
-tokenizer = AutoTokenizer.from_pretrained(
-    f"{CODE_PATH}/synth-tokenizers/tokenizer-pad0"
-)
-decoder = GreedyDecoder(tokenizer.pad_token_id)
 
-# %% [markdown]
-# # Dataset
-
-
-# %%
 class SynthDataset(torch.utils.data.Dataset):
     def __init__(self, images_dir, annotation_file, height=32):
         self.images_dir = images_dir
@@ -84,26 +74,6 @@ class SynthDataset(torch.utils.data.Dataset):
         return image, label
 
 
-# %%
-IMAGES_DIR = "../data/synth/mnt/90kDICT32px/"
-TRAIN_ANNOTATION_FILE = "../data/synth/mnt/annotation_train_good.txt"
-VAL_ANNOTATION_FILE = "../data/synth/mnt/annotation_val_good.txt"
-
-# %%
-train_dataset = SynthDataset(IMAGES_DIR, TRAIN_ANNOTATION_FILE)
-val_dataset = SynthDataset(IMAGES_DIR, VAL_ANNOTATION_FILE)
-
-# %% [markdown]
-# # DataModule
-
-# %%
-from dataclasses import dataclass, field
-from typing import Any
-
-from torch.utils.data import DataLoader
-
-
-# %%
 class MaxPoolImagePad:
     def __init__(self):
         self.pool = torch.nn.Sequential(
@@ -115,11 +85,6 @@ class MaxPoolImagePad:
         return self.pool(x)
 
 
-# %%
-POOLER = MaxPoolImagePad()
-
-
-# %%
 @dataclass
 class SynthDataModule:
     train_dataset: Any = field(metadata="Training dataset")
@@ -129,6 +94,8 @@ class SynthDataModule:
     valid_bs: int = field(default=16, metadata="Eval batch size")
     num_workers: int = field(default=2)
     max_width: int = field(default=None)
+
+    pooler: Any = field(default_factory=MaxPoolImagePad)
 
     @staticmethod
     def expand_image(img, h, w):
@@ -148,7 +115,7 @@ class SynthDataModule:
         attention_images = []
         for w in image_widths:
             attention_images.append([1] * w + [0] * (max_width - w))
-        attention_images = POOLER(
+        attention_images = self.pooler(
             torch.tensor(attention_images).float()
         ).long()
 
@@ -182,24 +149,6 @@ class SynthDataModule:
             num_workers=self.num_workers,
             collate_fn=self.collate_fn,
         )
-
-
-# %%
-datamodule = SynthDataModule(
-    train_dataset=train_dataset,
-    val_dataset=val_dataset,
-    tokenizer=tokenizer,
-    train_bs=4,
-    valid_bs=16,
-    num_workers=4,
-)
-
-# %%
-train_loader = datamodule.train_dataloader()
-val_loader = datamodule.val_dataloader()
-
-# %%
-from torch import nn
 
 
 class Swish(nn.Module):
@@ -287,9 +236,12 @@ class ResNetLike(nn.Module):
 
 
 class AbstractTransformersEncoder(torch.nn.Module):
-    def __init__(self, vocab_size: int = 100, config_dict: dict = {}):
+    def __init__(
+        self, vocab_size: int = 100, config_dict: dict = {}, tokenizer=None
+    ):
         super().__init__()
         self.vocab_size = vocab_size
+        self.tokenizer = tokenizer
         config_dict = self._get_config_dict(config_dict)
         config = DebertaV2Config(**config_dict)
         self.encoder = DebertaV2ForTokenClassification(config)
@@ -318,8 +270,8 @@ class AbstractTransformersEncoder(torch.nn.Module):
             "num_attention_heads": 8,
             "num_hidden_layers": 3,
             "type_vocab_size": 0,
-            "pad_token_id": tokenizer.pad_token_id,
-            "eos_token_id": tokenizer.eos_token_id,
+            "pad_token_id": self.tokenizer.pad_token_id,
+            "eos_token_id": self.tokenizer.eos_token_id,
             "vocab_size": self.vocab_size,
         }
         base_config_dict.update(config_dict)
@@ -332,38 +284,7 @@ class AbstractTransformersEncoder(torch.nn.Module):
         return outputs.logits
 
 
-# %%
-vis_model = ResNetLike(vocab_size=tokenizer.vocab_size, p=0.15)
-tr_model = AbstractTransformersEncoder(vocab_size=tokenizer.vocab_size)
-
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-device
-
-# %%
-_ = vis_model.to(device)
-_ = tr_model.to(device)
-
-# %%
-MAX_EPOCHS = 2
-STEPS = len(train_loader) * MAX_EPOCHS
-STEPS
-
-# %%
-optimizer = torch.optim.AdamW(tr_model.parameters(), lr=1e-4, weight_decay=0)
-vis_optimizer = torch.optim.AdamW(
-    vis_model.parameters(), lr=1e-4, weight_decay=0
-)
-lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-    optimizer, STEPS, 1e-8
-)
-vis_lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-    vis_optimizer, STEPS, 1e-8
-)
-criterion = torch.nn.CTCLoss(blank=tokenizer.pad_token_id, zero_infinity=True)
-
-
-# %%
-def get_preds_from_logits(logits, attention_image, labels):
+def get_preds_from_logits(logits, attention_image, labels, decoder, tokenizer):
     decoded_ids = logits.argmax(-1).squeeze(0)
     if len(decoded_ids.shape) == 1:
         decoded_ids = decoded_ids.unsqueeze(0)
@@ -376,8 +297,18 @@ def get_preds_from_logits(logits, attention_image, labels):
     return y_pred, y
 
 
-# %%
-def train_step(engine, batch):
+def train_step(
+    engine,
+    batch,
+    vis_model,
+    tr_model,
+    optimizer,
+    lr_scheduler,
+    vis_optimizer,
+    vis_lr_scheduler,
+    criterion,
+    device,
+):
     vis_model.train()
     tr_model.train()
 
@@ -389,7 +320,6 @@ def train_step(engine, batch):
         x.to(device) if x is not None else x for x in batch
     ]
 
-    # with torch.no_grad():
     image_embeddings = vis_model(images)
     logits = tr_model(image_embeddings, attention_mask=attention_image)
 
@@ -405,8 +335,7 @@ def train_step(engine, batch):
     isnan_loss = torch.isnan(loss).item()
     if isnan_loss:
         print("Loss is NaN")
-        sys.exit(1)
-        return 0
+        raise Exception("Loss is NaN")
 
     loss.backward()
 
@@ -419,8 +348,7 @@ def train_step(engine, batch):
     return loss.item()
 
 
-# %%
-def val_step(engine, batch):
+def val_step(engine, batch, vis_model, tr_model, device, decoder, tokenizer):
     vis_model.eval()
     tr_model.eval()
     images, labels, _, attention_image = [
@@ -430,18 +358,13 @@ def val_step(engine, batch):
         image_embeddings = vis_model(images)
         logits = tr_model(image_embeddings, attention_mask=attention_image)
 
-    y_pred, y = get_preds_from_logits(logits, attention_image, labels)
+    y_pred, y = get_preds_from_logits(
+        logits, attention_image, labels, decoder, tokenizer
+    )
     return y_pred, y
 
 
-# %%
-trainer = Engine(train_step)
-train_evaluator = Engine(val_step)
-validation_evaluator = Engine(val_step)
-
-
-# %%
-def log_validation_results(engine):
+def log_validation_results(engine, validation_evaluator, val_loader):
     validation_evaluator.run(val_loader)
     metrics = validation_evaluator.state.metrics
     avg_accuracy = metrics["accuracy"]
@@ -450,60 +373,182 @@ def log_validation_results(engine):
     )
 
 
-# %%
-ExactMatch().attach(validation_evaluator, "accuracy")
+if __name__ == "__main__":
+    IMAGES_DIR = "../data/synth/mnt/90kDICT32px/"
+    TRAIN_ANNOTATION_FILE = "../data/synth/mnt/annotation_train_good.txt"
+    VAL_ANNOTATION_FILE = "../data/synth/mnt/annotation_val_good.txt"
 
-trainer.add_event_handler(Events.EPOCH_COMPLETED, log_validation_results)
+    def run(last_good_checkpoint: str = None):
+        from functools import partial
 
-# %%
-to_save = {
-    "model": tr_model,
-    "optimizer": optimizer,
-    "lr_scheduler": lr_scheduler,
-    "trainer": trainer,
-}
-handler = Checkpoint(
-    to_save,
-    "synth-tr-checkpoint-models",
-    n_saved=4,
-)
-trainer.add_event_handler(Events.ITERATION_COMPLETED(every=10_000), handler)
+        tokenizer = AutoTokenizer.from_pretrained(
+            f"{CODE_PATH}/synth-tokenizers/tokenizer-pad0"
+        )
+        decoder = GreedyDecoder(tokenizer.pad_token_id)
 
-# %%
-vis_checkpoint = torch.load(
-    "/home/israel/Mestrado/notebooks/synth-broken-ckpts/best_model_2_accuracy=0.8796.pt"
-)
-print("Loading vis weights", vis_model.load_state_dict(vis_checkpoint))
-tr_checkpoint = torch.load(
-    "/home/israel/Mestrado/notebooks/synth-broken-tr-ckpts/best_model_1_accuracy=0.9020.pt"
-)
-print("Loading tr weights", tr_model.load_state_dict(tr_checkpoint))
+        train_dataset = SynthDataset(IMAGES_DIR, TRAIN_ANNOTATION_FILE)
+        val_dataset = SynthDataset(IMAGES_DIR, VAL_ANNOTATION_FILE)
 
+        datamodule = SynthDataModule(
+            train_dataset=train_dataset,
+            val_dataset=val_dataset,
+            tokenizer=tokenizer,
+            train_bs=4,
+            valid_bs=16,
+            num_workers=4,
+        )
 
-# TODO: correct path
-# tr_checkpoint = torch.load(
-#     "/home/israel/Mestrado/notebooks/synth-broken-tr-ckpts/checkpoint_870000.pt"
-# )
-# Checkpoint.load_objects(to_load=to_save, checkpoint=tr_checkpoint)
+        train_loader = datamodule.train_dataloader()
+        val_loader = datamodule.val_dataloader()
 
+        vis_model = ResNetLike(vocab_size=tokenizer.vocab_size, p=0.15)
+        tr_model = AbstractTransformersEncoder(
+            vocab_size=tokenizer.vocab_size, tokenizer=tokenizer
+        )
 
-# %%
-to_save = {"model": tr_model}
-handler = Checkpoint(
-    to_save,
-    "synth-tr-checkpoint-models",
-    n_saved=1,
-    filename_prefix="best",
-    score_name="accuracy",
-    global_step_transform=global_step_from_engine(trainer),
-)
-validation_evaluator.add_event_handler(Events.COMPLETED, handler)
+        vis_checkpoint = torch.load(
+            "/home/israel/Mestrado/notebooks/synth-broken-ckpts/best_model_2_accuracy=0.8796.pt"
+        )
+        print("Loading vis weights", vis_model.load_state_dict(vis_checkpoint))
+        tr_checkpoint = torch.load(
+            "/home/israel/Mestrado/notebooks/synth-broken-tr-ckpts/best_model_1_accuracy=0.9020.pt"
+        )
+        print("Loading tr weights", tr_model.load_state_dict(tr_checkpoint))
 
-# %%
-pbar = ProgressBar()
-pbar.attach(trainer, output_transform=lambda x: {"loss": x})
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-# %%
-trainer.run(train_loader, max_epochs=MAX_EPOCHS)
+        _ = vis_model.to(device)
+        _ = tr_model.to(device)
 
-# %%
+        MAX_EPOCHS = 1
+        STEPS = len(train_loader) * MAX_EPOCHS
+
+        optimizer = torch.optim.AdamW(
+            tr_model.parameters(), lr=1e-6, weight_decay=0
+        )
+        vis_optimizer = torch.optim.AdamW(
+            vis_model.parameters(), lr=1e-6, weight_decay=0
+        )
+        lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+            optimizer, STEPS, 1e-8
+        )
+        vis_lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+            vis_optimizer, STEPS, 1e-8
+        )
+        criterion = torch.nn.CTCLoss(
+            blank=tokenizer.pad_token_id, zero_infinity=True
+        )
+
+        partial_train_step = partial(
+            train_step,
+            vis_model=vis_model,
+            tr_model=tr_model,
+            optimizer=optimizer,
+            lr_scheduler=lr_scheduler,
+            vis_optimizer=vis_optimizer,
+            vis_lr_scheduler=vis_lr_scheduler,
+            criterion=criterion,
+            device=device,
+        )
+        partial_val_step = partial(
+            val_step,
+            vis_model=vis_model,
+            tr_model=tr_model,
+            device=device,
+            decoder=decoder,
+            tokenizer=tokenizer,
+        )
+        trainer = Engine(partial_train_step)
+        validation_evaluator = Engine(partial_val_step)
+
+        ExactMatch().attach(validation_evaluator, "accuracy")
+
+        trainer.add_event_handler(
+            Events.EPOCH_COMPLETED,
+            partial(
+                log_validation_results,
+                validation_evaluator=validation_evaluator,
+                val_loader=val_loader,
+            ),
+        )
+
+        to_save = {
+            "model": tr_model,
+            "optimizer": optimizer,
+            "lr_scheduler": lr_scheduler,
+            "trainer": trainer,
+        }
+        handler = Checkpoint(
+            to_save,
+            "synth-tr-checkpoint-models",
+            n_saved=4,
+        )
+        if last_good_checkpoint is not None:
+            print("Loading last good checkpoint", last_good_checkpoint)
+            checkpoint = torch.load(last_good_checkpoint)
+            Checkpoint.load_objects(to_load=to_save, checkpoint=checkpoint)
+
+        trainer.add_event_handler(
+            Events.ITERATION_COMPLETED(every=10_000), handler
+        )
+
+        best_to_save = {"model": tr_model}
+        best_handler = Checkpoint(
+            best_to_save,
+            "synth-tr-checkpoint-models",
+            n_saved=1,
+            filename_prefix="best",
+            score_name="accuracy",
+            global_step_transform=global_step_from_engine(trainer),
+        )
+        validation_evaluator.add_event_handler(Events.COMPLETED, best_handler)
+
+        pbar = ProgressBar()
+        pbar.attach(trainer, output_transform=lambda x: {"loss": x})
+        try:
+            trainer.run(train_loader, max_epochs=MAX_EPOCHS)
+        except:
+            print("Error running training")
+
+        return handler.last_checkpoint, best_handler.last_checkpoint
+
+    last_good_checkpoint = None
+    best_checkpoint = ""
+
+    input_path_checkpoints = (
+        "/home/israel/Mestrado/notebooks/synth-checkpoint-models"
+    )
+    output_path_checkpoint = (
+        "/home/israel/Mestrado/notebooks/synth-broken-ckpts"
+    )
+
+    finished = False
+    while not finished:
+        last_good_checkpoint, best_checkpoint = run(last_good_checkpoint)
+        try:
+            torch.load(best_checkpoint)
+        except:
+            print("Best checkpoint is broken, running again")
+        else:
+            finished = True
+        finally:
+            if not finished:
+                print("Finished?", finished)
+                # move last good checkpoint to output path
+                os.rename(
+                    last_good_checkpoint,
+                    os.path.join(
+                        output_path_checkpoint,
+                        os.path.basename(last_good_checkpoint),
+                    ),
+                )
+                # remove all other checkpoints
+                for f in os.listdir(input_path_checkpoints):
+                    os.remove(os.path.join(input_path_checkpoints, f))
+                last_good_checkpoint = os.path.join(
+                    output_path_checkpoint,
+                    os.path.basename(last_good_checkpoint),
+                )
+            import gc
+
+            gc.collect()
