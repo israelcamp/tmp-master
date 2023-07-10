@@ -300,28 +300,19 @@ def get_preds_from_logits(logits, attention_image, labels, decoder, tokenizer):
 def train_step(
     engine,
     batch,
-    vis_model,
-    tr_model,
+    model,
     optimizer,
     lr_scheduler,
-    vis_optimizer,
-    vis_lr_scheduler,
     criterion,
     device,
 ):
-    vis_model.train()
-    tr_model.train()
-
-    optimizer.zero_grad()
-    tr_model.zero_grad()
-    vis_model.zero_grad()
+    model.train()
 
     images, labels, attention_mask, attention_image = [
         x.to(device) if x is not None else x for x in batch
     ]
 
-    image_embeddings = vis_model(images)
-    logits = tr_model(image_embeddings, attention_mask=attention_image)
+    logits = model(images, attention_mask=attention_image)
 
     input_length = attention_image.sum(-1)
     target_length = attention_mask.sum(-1)
@@ -339,24 +330,22 @@ def train_step(
 
     loss.backward()
 
-    torch.nn.utils.clip_grad_norm_(tr_model.parameters(), 1.0)
-
+    torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
     optimizer.step()
     lr_scheduler.step()
-    vis_optimizer.step()
-    vis_lr_scheduler.step()
+    optimizer.zero_grad()
+    model.zero_grad()
+
     return loss.item()
 
 
-def val_step(engine, batch, vis_model, tr_model, device, decoder, tokenizer):
-    vis_model.eval()
-    tr_model.eval()
+def val_step(engine, batch, model, device, decoder, tokenizer):
+    model.eval()
     images, labels, _, attention_image = [
         x.to(device) if x is not None else x for x in batch
     ]
     with torch.no_grad():
-        image_embeddings = vis_model(images)
-        logits = tr_model(image_embeddings, attention_mask=attention_image)
+        logits = model(images, attention_mask=attention_image)
 
     y_pred, y = get_preds_from_logits(
         logits, attention_image, labels, decoder, tokenizer
@@ -371,6 +360,21 @@ def log_validation_results(engine, validation_evaluator, val_loader):
     print(
         f"Validation Results - Epoch: {engine.state.epoch}  Avg accuracy: {avg_accuracy:.3f}"
     )
+
+
+class OCRModel(torch.nn.Module):
+    def __init__(self, visual_model, rec_model: AbstractTransformersEncoder):
+        super().__init__()
+        self.visual_model = visual_model
+        self.rec_model = rec_model
+
+    def forward(self, images, attention_mask=None):
+        features = self.visual_model(images)
+        logits = self.rec_model(features, attention_mask=attention_mask)
+        return logits
+
+    def cnn_lm(self, embedding):
+        return self.visual_model.lm(embedding)
 
 
 if __name__ == "__main__":
@@ -405,35 +409,20 @@ if __name__ == "__main__":
         tr_model = AbstractTransformersEncoder(
             vocab_size=tokenizer.vocab_size, tokenizer=tokenizer
         )
-
-        vis_checkpoint = torch.load(
-            "/home/israel/Mestrado/notebooks/synth-broken-ckpts/best_model_2_accuracy=0.8796.pt"
-        )
-        print("Loading vis weights", vis_model.load_state_dict(vis_checkpoint))
-        tr_checkpoint = torch.load(
-            "/home/israel/Mestrado/notebooks/synth-broken-tr-ckpts/best_model_1_accuracy=0.9020.pt"
-        )
-        print("Loading tr weights", tr_model.load_state_dict(tr_checkpoint))
+        model = OCRModel(vis_model, tr_model)
 
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-        _ = vis_model.to(device)
-        _ = tr_model.to(device)
+        _ = model.to(device)
 
-        MAX_EPOCHS = 1
+        MAX_EPOCHS = 2
         STEPS = len(train_loader) * MAX_EPOCHS
 
         optimizer = torch.optim.AdamW(
-            tr_model.parameters(), lr=1e-6, weight_decay=0
-        )
-        vis_optimizer = torch.optim.AdamW(
-            vis_model.parameters(), lr=1e-6, weight_decay=0
+            model.parameters(), lr=1e-4, weight_decay=0
         )
         lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
             optimizer, STEPS, 1e-8
-        )
-        vis_lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-            vis_optimizer, STEPS, 1e-8
         )
         criterion = torch.nn.CTCLoss(
             blank=tokenizer.pad_token_id, zero_infinity=True
@@ -441,19 +430,15 @@ if __name__ == "__main__":
 
         partial_train_step = partial(
             train_step,
-            vis_model=vis_model,
-            tr_model=tr_model,
+            model=model,
             optimizer=optimizer,
             lr_scheduler=lr_scheduler,
-            vis_optimizer=vis_optimizer,
-            vis_lr_scheduler=vis_lr_scheduler,
             criterion=criterion,
             device=device,
         )
         partial_val_step = partial(
             val_step,
-            vis_model=vis_model,
-            tr_model=tr_model,
+            model=model,
             device=device,
             decoder=decoder,
             tokenizer=tokenizer,
@@ -473,14 +458,14 @@ if __name__ == "__main__":
         )
 
         to_save = {
-            "model": tr_model,
+            "model": model,
             "optimizer": optimizer,
             "lr_scheduler": lr_scheduler,
             "trainer": trainer,
         }
         handler = Checkpoint(
             to_save,
-            "synth-tr-checkpoint-models",
+            "synth-checkpoint-models",
             n_saved=4,
         )
         if last_good_checkpoint is not None:
@@ -492,11 +477,11 @@ if __name__ == "__main__":
             Events.ITERATION_COMPLETED(every=10_000), handler
         )
 
-        best_to_save = {"model": tr_model}
+        best_to_save = {"model": model}
         best_handler = Checkpoint(
             best_to_save,
-            "synth-tr-checkpoint-models",
-            n_saved=1,
+            "synth-checkpoint-models",
+            n_saved=2,
             filename_prefix="best",
             score_name="accuracy",
             global_step_transform=global_step_from_engine(trainer),
